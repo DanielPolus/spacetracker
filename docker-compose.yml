@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:16
+    container_name: spacetracker-db
+    environment:
+      POSTGRES_USER: space
+      POSTGRES_PASSWORD: space
+      POSTGRES_DB: spacetracker
+    ports:
+      - "5440:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U space -d spacetracker"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - pgdata_spacetracker:/var/lib/postgresql/data
+volumes:
+  pgdata_spacetracker:
