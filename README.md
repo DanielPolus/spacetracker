@@ -96,7 +96,6 @@ Launch JSON sample:
 
   "id": "TEST-001",
   
-
   "name": "Demo Mission",
   
   "window_start": "2025-10-31T20:51:48.195233+00:00",
