@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>SpaceTracker – Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Tailwind по CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js по CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    /* Небольшая подсказка/тост, чтобы не мешать */
+    #toast {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      z-index: 50;
+      display: none;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <div class="max-w-7xl mx-auto p-6 space-y-6">
+    <!-- Header -->
+    <header class="flex items-center justify-between gap-4">
+      <h1 class="text-2xl font-bold">🚀 SpaceTracker Dashboard</h1>
+      <div class="flex flex-wrap items-center gap-2">
+        <span id="sched-badge" class="inline-flex items-center px-3 py-1 rounded-full text-sm bg-slate-200">Scheduler: …</span>
+        <button id="btn-start" class="px-3 py-1 rounded-md bg-emerald-600 text-white hover:bg-emerald-700">Start</button>
+        <button id="btn-stop"  class="px-3 py-1 rounded-md bg-rose-600 text-white hover:bg-rose-700">Stop</button>
+        <button id="btn-run-etl" class="px-3 py-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700">Run ETL now</button>
+        <button id="btn-refresh" class="px-3 py-1 rounded-md bg-slate-700 text-white hover:bg-slate-800">Refresh</button>
+      </div>
+    </header>
+
+    <!-- Charts -->
+    <section class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div class="bg-white rounded-xl shadow p-4">
+        <h2 class="font-semibold mb-2">Launches by Date</h2>
+        <canvas id="chartByDate" height="140"></canvas>
+      </div>
+      <div class="bg-white rounded-xl shadow p-4">
+        <h2 class="font-semibold mb-2">Launches by Agency</h2>
+        <canvas id="chartByAgency" height="140"></canvas>
+      </div>
+    </section>
+
+    <!-- Launches Table (ровная, со sticky header) -->
+<section class="bg-white rounded-xl shadow p-4">
+  <div class="flex items-end justify-between mb-3">
+    <h2 class="font-semibold">Upcoming launches</h2>
+    <div class="text-sm text-slate-500" id="launch-count">…</div>
+  </div>
+
+  <div class="border rounded-lg overflow-hidden">
+    <!-- скроллим весь table, шапка прилипает -->
+    <div class="max-h-[420px] overflow-y-auto">
+      <table class="min-w-full text-sm table-fixed">
+        <colgroup>
+          <!-- подгони при желании ширины колонок -->
+          <col style="width: 16rem" />
+          <col style="width: 26rem" />
+          <col style="width: 20rem" />
+          <col style="width: 12rem" />
+          <col style="width: 12rem" />
+          <col /> <!-- остаток — Location -->
+        </colgroup>
+        <thead class="bg-slate-100 text-slate-700 sticky top-0 z-10">
+          <tr>
+            <th class="text-left px-3 py-2">Time (UTC)</th>
+            <th class="text-left px-3 py-2">Name</th>
+            <th class="text-left px-3 py-2">Agency</th>
+            <th class="text-left px-3 py-2">Rocket</th>
+            <th class="text-left px-3 py-2">Status</th>
+            <th class="text-left px-3 py-2">Location</th>
+          </tr>
+        </thead>
+        <tbody id="launch-tbody" class="divide-y divide-slate-100">
+          <!-- rows injected by JS -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ETL history (ровная, со sticky header) -->
+<section class="bg-white rounded-xl shadow p-4">
+  <div class="flex items-end justify-between mb-3">
+    <h2 class="font-semibold">ETL history</h2>
+    <span class="text-xs text-slate-500">Last 50 runs</span>
+  </div>
+
+  <div class="border rounded-lg overflow-hidden">
+    <div class="max-h-[320px] overflow-y-auto">
+      <table class="min-w-full text-sm table-fixed">
+        <colgroup>
+          <col style="width: 18rem" />
+          <col style="width: 18rem" />
+          <col style="width: 14rem" />
+          <col style="width: 10rem" />
+          <col style="width: 8rem" />
+          <col /> <!-- Error -->
+        </colgroup>
+        <thead class="bg-slate-100 text-slate-700 sticky top-0 z-10">
+          <tr>
+            <th class="text-left px-3 py-2">Started</th>
+            <th class="text-left px-3 py-2">Finished</th>
+            <th class="text-left px-3 py-2">Job</th>
+            <th class="text-left px-3 py-2">Status</th>
+            <th class="text-left px-3 py-2">Rows</th>
+            <th class="text-left px-3 py-2">Error</th>
+          </tr>
+        </thead>
+        <tbody id="etl-tbody" class="divide-y divide-slate-100">
+          <!-- rows injected by JS -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="bg-slate-900/90 text-white text-sm px-3 py-2 rounded-lg shadow">
+    <span id="toast-text">Something happened</span>
+  </div>
+
+  <script>
+    // -------- helpers --------
+    const fmt = (x) => (x ?? '—');
+    const toISODate = (s) => {
+      try { return new Date(s).toISOString().slice(0,10); } catch { return null; }
+    };
+    const text = (el, s) => el.textContent = s;
+
+    function showToast(message, ms = 2500) {
+      const el = document.getElementById('toast');
+      const txt = document.getElementById('toast-text');
+      txt.textContent = message;
+      el.style.display = 'block';
+      clearTimeout(el.__t);
+      el.__t = setTimeout(() => { el.style.display = 'none'; }, ms);
+    }
+
+    async function safeFetchJSON(url, options = {}) {
+      try {
+        const r = await fetch(url, options);
+        if (!r.ok) throw new Error(`${url} -> ${r.status}`);
+        return await r.json();
+      } catch (e) {
+        console.error('[fetch error]', e);
+        showToast(`Failed: ${url}`);
+        return null;
+      }
+    }
+
+    // -------- scheduler controls --------
+    async function loadSchedulerStatus() {
+      const data = await safeFetchJSON('/scheduler/status');
+      const badge = document.getElementById('sched-badge');
+      if (!data) {
+        badge.textContent = 'Scheduler: unknown';
+        badge.className = 'inline-flex items-center px-3 py-1 rounded-full text-sm bg-slate-200 text-slate-700';
+        return;
+      }
+      badge.textContent = 'Scheduler: ' + (data.running ? 'running' : 'stopped');
+      badge.className = 'inline-flex items-center px-3 py-1 rounded-full text-sm ' +
+        (data.running ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-700');
+    }
+
+    async function startScheduler() {
+      const r = await safeFetchJSON('/scheduler/start', { method: 'POST' });
+      if (r) showToast('Scheduler started');
+      await loadSchedulerStatus();
+    }
+    async function stopScheduler() {
+      const r = await safeFetchJSON('/scheduler/stop', { method: 'POST' });
+      if (r) showToast('Scheduler stopped');
+      await loadSchedulerStatus();
+    }
+    async function runETL() {
+      const r = await safeFetchJSON('/etl/run/upcoming', { method: 'POST' });
+      if (r) showToast('ETL run triggered');
+      await Promise.all([loadLaunches(), loadEtlHistory()]);
+    }
+
+    // -------- table & charts --------
+    let chartByDate, chartByAgency;
+
+    function buildCharts(items) {
+      // агрегация по датам
+      const byDate = {};
+      for (const x of items) {
+        const d = toISODate(x.time || x.window_start);
+        if (!d) continue;
+        byDate[d] = (byDate[d] || 0) + 1;
+      }
+      const dateLabels = Object.keys(byDate).sort();
+      const dateValues = dateLabels.map(k => byDate[k]);
+
+      // агрегация по агентствам
+      const byAgency = {};
+      for (const x of items) {
+        const a = x.agency_id || 'UNKNOWN';
+        byAgency[a] = (byAgency[a] || 0) + 1;
+      }
+      const agencyLabels = Object.keys(byAgency).sort();
+      const agencyValues = agencyLabels.map(k => byAgency[k]);
+
+      // график по датам
+      const ctx1 = document.getElementById('chartByDate').getContext('2d');
+      if (chartByDate) chartByDate.destroy();
+      chartByDate = new Chart(ctx1, {
+        type: 'line',
+        data: {
+          labels: dateLabels,
+          datasets: [{ label: 'Launches per day', data: dateValues }]
+        },
+        options: { responsive: true, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+      });
+
+      // график по агентствам
+      const ctx2 = document.getElementById('chartByAgency').getContext('2d');
+      if (chartByAgency) chartByAgency.destroy();
+      chartByAgency = new Chart(ctx2, {
+        type: 'bar',
+        data: {
+          labels: agencyLabels,
+          datasets: [{ label: 'Launches per agency', data: agencyValues }]
+        },
+        options: {
+          responsive: true,
+          indexAxis: 'y',
+          scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+        }
+      });
+    }
+
+    async function loadLaunches() {
+      const data = await safeFetchJSON('/public/launches?limit=500');
+      if (!data) return;
+      const items = data.items || data;
+
+      // таблица
+      const tbody = document.getElementById('launch-tbody');
+      tbody.innerHTML = '';
+      for (const x of items) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="px-3 py-2">${fmt(x.time || x.window_start || '')}</td>
+          <td class="px-3 py-2">${fmt(x.name)}</td>
+          <td class="px-3 py-2">${fmt(x.agency_id)}</td>
+          <td class="px-3 py-2">${fmt(x.rocket_id)}</td>
+          <td class="px-3 py-2">${fmt(x.status)}</td>
+          <td class="px-3 py-2">${fmt(x.location)}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+      const cnt = document.getElementById('launch-count');
+      text(cnt, `${items.length} total loaded`);
+
+      // графики
+      buildCharts(items);
+    }
+
+    async function loadEtlHistory() {
+      const items = await safeFetchJSON('/metrics/etl');
+      if (!items) return;
+      const tbody = document.getElementById('etl-tbody');
+      tbody.innerHTML = '';
+      for (const x of items.slice(0, 50)) {
+        const st = x.status;
+        const badge = st === 'success' ? 'bg-emerald-100 text-emerald-800'
+                  : st === 'running' ? 'bg-amber-100 text-amber-800'
+                  : 'bg-rose-100 text-rose-800';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="px-3 py-2">${fmt(x.started_at)}</td>
+          <td class="px-3 py-2">${fmt(x.finished_at)}</td>
+          <td class="px-3 py-2">${fmt(x.job)}</td>
+          <td class="px-3 py-2"><span class="px-2 py-0.5 rounded ${badge}">${fmt(x.status)}</span></td>
+          <td class="px-3 py-2">${fmt(x.rows_ingested)}</td>
+          <td class="px-3 py-2">${fmt(x.error_text)}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+
+    // -------- init --------
+    document.getElementById('btn-start').addEventListener('click', startScheduler);
+    document.getElementById('btn-stop').addEventListener('click', stopScheduler);
+    document.getElementById('btn-run-etl').addEventListener('click', runETL);
+    document.getElementById('btn-refresh').addEventListener('click', async () => {
+      await Promise.allSettled([loadLaunches(), loadEtlHistory(), loadSchedulerStatus()]);
+      showToast('Refreshed');
+    });
+
+    (async () => {
+      await Promise.allSettled([loadLaunches(), loadEtlHistory(), loadSchedulerStatus()]);
+      // если что-то упало — уже показали мягкий тост и записали в консоль
+    })();
+  </script>
+</body>
+</html>

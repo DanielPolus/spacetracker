@@ -1,22 +1,20 @@
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.interval import IntervalTrigger
-import asyncio
-from etl.incremental import run_incremental
+import sys, pathlib, asyncio
+sys.path.append(str(pathlib.Path(__file__).resolve().parents[1]))
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+from etl.jobs import etl_upcoming_launches
 
 async def job():
-    loop = asyncio.get_event_loop()
-    inserted = await loop.run_in_executor(None, run_incremental)
-    print(f"[scheduler] inserted={inserted}")
-
+    try:
+        n = await etl_upcoming_launches()
+        print(f"[scheduler] ok, inserted/updated={n}")
+    except Exception as e:
+        print(f"[scheduler] failed: {e}")
 
 if __name__ == "__main__":
     sched = AsyncIOScheduler(timezone="UTC")
-    sched.add_job(job, IntervalTrigger(minutes=5))
+    sched.add_job(job, CronTrigger(minute="*/10"))
     sched.start()
-
     print("[scheduler] started. Ctrl+C to exit.")
-    try:
-        asyncio.get_event_loop().run_forever()
-    except (KeyboardInterrupt, SystemExit):
-        pass
+    asyncio.get_event_loop().run_forever()
