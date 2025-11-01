@@ -93,33 +93,62 @@ curl -X POST http://127.0.0.1:8000/scheduler/start
 Launch JSON sample:
 
 {
+
   "id": "TEST-001",
+  
+
   "name": "Demo Mission",
+  
   "window_start": "2025-10-31T20:51:48.195233+00:00",
+  
   "status": "planned",
+  
   "rocket_id": "FALCON9",
+  
   "agency_id": "NASA",
+  
   "location": "Florida"
+
 }
 
 ## 🧭 Project Structure
+
 spacetracker/
+
 │
+
 ├── app/
+
 │   ├── api/                # REST API routes
+
 │   ├── models/             # SQLAlchemy models
+
 │   ├── core/               # DB & settings
+
 │   ├── services/           # Scheduler service
+
 │   └── ui/                 # Dashboard routes
+
 │
+
 ├── etl/
+
 │   ├── source_ll.py        # Fetch data from Launch Library API
+
 │   ├── normalize.py        # Clean & standardize data
+
 │   ├── etl_load.py         # Upsert agencies, rockets, launches
+
 │   ├── jobs.py             # ETL job entrypoint
+
 │   └── scheduler.py        # Background scheduler (APScheduler)
+
 │
+
 ├── templates/              # Jinja2 templates for dashboard
+
 ├── static/                 # CSS & JS (Chart.js)
+
 ├── docker-compose.yml
+
 └── alembic.ini
